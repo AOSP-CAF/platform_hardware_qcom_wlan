@@ -16,6 +16,8 @@
 #include <net/if.h>
 #include <netlink/object-api.h>
 #include <linux/pkt_sched.h>
+#include <netlink/genl/genl.h>
+#include <netlink/netlink.h>
 
 #include "common.h"
 #include "linux_ioctl.h"
@@ -93,7 +95,48 @@ int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 		/* else proceed with legacy handling as below */
 	}
 
-	if (os_strcasecmp(cmd, "START") == 0) {
+	if (os_strncasecmp(cmd, "INTERFACE",9) == 0) {
+		struct nl_msg *msg = NULL;
+		char newIface[IFNAMSIZ+1];
+		msg = nlmsg_alloc();
+		if(!msg) {
+			wpa_printf(MSG_ERROR, "%s: Failed to allocate netlink message\n",__func__);
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		if (os_strncasecmp(cmd + strlen("INTERFACE "), "CREATE",6) == 0) {
+			strlcpy(newIface, cmd+strlen("INTERFACE CREATE "), IFNAMSIZ);
+			genlmsg_put(msg, 0, 0, drv->global->nl80211_id, 0, 0,
+				    NL80211_CMD_NEW_INTERFACE, 0);
+			if (nla_put_u32(msg, NL80211_ATTR_IFINDEX, if_nametoindex(bss->ifname)) ||
+			    nla_put(msg, NL80211_ATTR_IFNAME, strlen(newIface)+1, newIface) ||
+			    nla_put_u32( msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_AP)) {
+				wpa_printf(MSG_ERROR,"NLA_PUT fail");
+				goto out;
+			}
+		} else if (os_strncasecmp(cmd + strlen("INTERFACE "), "DELETE",6) == 0) {
+			strlcpy(newIface, cmd+strlen("INTERFACE DELETE "), IFNAMSIZ);
+			genlmsg_put(msg, 0, 0,drv->global->nl80211_id, 0, 0,
+				    NL80211_CMD_DEL_INTERFACE, 0);
+			if (nla_put_u32(msg, NL80211_ATTR_IFINDEX, if_nametoindex(newIface))) {
+				wpa_printf(MSG_ERROR,"NLA_PUT fail");
+				goto out;
+			}
+		} else {
+			goto out;
+		}
+
+		ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+		msg = NULL;
+		if (ret)
+			wpa_printf(MSG_ERROR,"Command: %s - Failure",cmd);
+		else
+			wpa_printf(MSG_INFO,"Command: %s - Ok",cmd);
+out:
+		if (msg)
+			nlmsg_free(msg);
+	} else if (os_strcasecmp(cmd, "START") == 0) {
 		dl_list_for_each(driver, &drv->global->interfaces, struct wpa_driver_nl80211_data, list) {
 			linux_set_iface_flags(drv->global->ioctl_sock, driver->first_bss->ifname, 1);
 			wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "STARTED");
