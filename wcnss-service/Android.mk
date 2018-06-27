@@ -66,6 +66,7 @@ LOCAL_CFLAGS += -DWCNSS_QMI
 LOCAL_SRC_FILES += wcnss_qmi_client.c
 
 LOCAL_MODULE := libwcnss_qmi
+LOCAL_CFLAGS += -DDYNAMIC_NV
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS += -Wall
 
